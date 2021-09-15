@@ -41,16 +41,16 @@ stride = 100
 num_samples = int(len(training_data) / stride)
 n_components = 10
 augmentation_list = {
+    'rotation': T.functional.rotate,
     'center_crop': T.functional.center_crop,
     'gamma': T.functional.adjust_gamma,
     'gaussian_blur': T.functional.gaussian_blur,
-    'rotation': T.functional.rotate,
 }
 kwargs_dict = {
+    'rotation': get_rotation_kwargs,
     'center_crop': get_crop_kwargs,
     'gamma': get_gamma_kwargs,
     'gaussian_blur': get_blur_kwargs,
-    'rotation': get_rotation_kwargs,
 }
 augmentation_subspaces = {}
 
@@ -67,9 +67,6 @@ for aug_i, (aug_name, aug_func) in enumerate(augmentation_list.items()):
         def augment(**kwargs):
             return aug_func(**kwargs)
 
-        # Get keyword arguments for this augmentation at this epoch
-        kwargs = kwargs_dict[aug_name](epoch + 1)
-
         pbar2 = tqdm(
             enumerate2(training_data, step=stride), 
             leave=False, 
@@ -78,8 +75,12 @@ for aug_i, (aug_name, aug_func) in enumerate(augmentation_list.items()):
         pbar2.set_description('Epoch %d' % epoch)
         for sample_i, (img, label) in pbar2:
             img = normalize(img)
+
+            # Get and apply keyword arguments for this augmentation
+            kwargs = kwargs_dict[aug_name](epoch + 1, epochs_per_aug=epochs_per_aug)
             kwargs['img'] = img
             aug_img = augment(**kwargs)
+
             if list(aug_img.shape) != list(img.shape):
                 aug_img = T.functional.resize(aug_img, list(img.shape)[1:])
             img, aug_img = np.array(img), np.array(aug_img)
