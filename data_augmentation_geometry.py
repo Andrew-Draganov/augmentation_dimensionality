@@ -7,52 +7,38 @@ import torch
 import torchvision
 import torchvision.transforms as T
 from PIL import Image
-from sklearn.decomposition import PCA
+from ptu import PTU
+from utils import enumerate2, pca, get_rotation_kwargs, \
+        get_blur_kwargs, get_gamma_kwargs, get_crop_kwargs
 
-training_data = torchvision.datasets.CIFAR10(
+# MNIST dataset
+training_data = torchvision.datasets.MNIST(
     root='./data',
     train=True,
     download=True,
     transform=None
 )
-
-# Cifar normalization
 normalize = T.Compose([
-	T.ToTensor(),
-    T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    T.ToTensor(),
+    T.Normalize([0.1307], [0.3081])
 ])
 
-# MNIST normalization
+# # CIFAR dataset
+# training_data = torchvision.datasets.MNIST(
+#     root='./data',
+#     train=True,
+#     download=True,
+#     transform=None
+# )
+# # Cifar normalization
 # normalize = T.Compose([
-#     T.ToTensor(),
-#     T.Normalize([0.1307], [0.3081])
+# 	T.ToTensor(),
+#     T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 # ])
 
-def get_rotation_kwargs(epoch):
-    scalar = float(180) / epochs_per_aug
-    min_rotation = (epoch - 1) * scalar
-    max_rotation = epoch * scalar
-    rotation_sample = random.choice([-1, 1]) * random.uniform(min_rotation, max_rotation)
-    return {'angle': rotation_sample}
-
-def get_blur_kwargs(epoch):
-    if epoch < 3:
-        epoch += 2 # Size 1 kernel does nothing, so add 2 to get size 3 kernel
-    if epoch % 2 == 1:
-        return {'kernel_size': epoch}
-
-    # Use half the default std. dev. and keep kernel same size as last time
-    sigma = (0.3 * ((epoch) * 0.5 - 1) + 0.8) / 2
-    return {'kernel_size': epoch - 1, 'sigma': sigma}
-
-def get_gamma_kwargs(epoch):
-    return {'gamma': epoch}
-
-def get_crop_kwargs(epoch):
-    return {'output_size': 32 - 2 * epoch}
-
-epochs_per_aug = 10
-num_samples = len(training_data)
+epochs_per_aug = 1
+stride = 100
+num_samples = int(len(training_data) / stride)
 n_components = 10
 augmentation_list = {
     'center_crop': T.functional.center_crop,
@@ -66,7 +52,6 @@ kwargs_dict = {
     'gaussian_blur': get_blur_kwargs,
     'rotation': get_rotation_kwargs,
 }
-
 augmentation_subspaces = {}
 
 # Sweep intensities or each augmentation, applying each intensity value to the entire dataset
@@ -74,17 +59,22 @@ augmentation_subspaces = {}
 # How linear is it?
 # Also would be interesting to look at the dimensionality of the low-dim manifold induced by aug
 for aug_i, (aug_name, aug_func) in enumerate(augmentation_list.items()):
-    aug_samples = np.zeros([num_samples * epochs_per_aug, 3072])
-    pbar = tqdm(range(1, epochs_per_aug))
+    # aug_samples = np.zeros([num_samples * epochs_per_aug, 3072]) # CIFAR-10
+    aug_samples = np.zeros([num_samples * epochs_per_aug, 784]) # MNIST
+    pbar = tqdm(range(epochs_per_aug))
     for epoch in pbar:
         pbar.set_description('Epochs for %s' % aug_name)
         def augment(**kwargs):
             return aug_func(**kwargs)
 
         # Get keyword arguments for this augmentation at this epoch
-        kwargs = kwargs_dict[aug_name](epoch)
+        kwargs = kwargs_dict[aug_name](epoch + 1)
 
-        pbar2 = tqdm(enumerate(training_data), leave=False, total=num_samples)
+        pbar2 = tqdm(
+            enumerate2(training_data, step=stride), 
+            leave=False, 
+            total=num_samples
+        )
         pbar2.set_description('Epoch %d' % epoch)
         for sample_i, (img, label) in pbar2:
             img = normalize(img)
@@ -99,23 +89,42 @@ for aug_i, (aug_name, aug_func) in enumerate(augmentation_list.items()):
             index = num_samples * epoch + sample_i
             aug_samples[index, :] = delta
 
-    # Do PCA by hand since we want to save off the covariance matrices
-    cov_matrix = np.cov(aug_samples.T)
-    eig_vals, eig_vecs = np.linalg.eig(cov_matrix)
-    sort_indices = np.argsort(eig_vals)
+    # Perform PCA
+    # subspace_dict = pca(aug_samples)
+    # augmentation_subspaces[aug_name] = subspace_dict
+    # print(aug_name, ' : ', subspace_dict['variance_percents'][:n_components])
 
-    # Sort by largest to smallest eigenvalue
-    eig_vals = eig_vals[sort_indices][::-1]
-    eig_vecs = eig_vecs[sort_indices][::-1]
-    variance_percents = np.abs(eig_vals) / np.sum(np.abs(eig_vals))
-    subspace_dict = {
-        'cov_matrix': cov_matrix,
-        'eig_vals': eig_vals,
-        'eig_vecs': eig_vecs,
-        'variance_percents': variance_percents
-    }
-    augmentation_subspaces[aug_name] = subspace_dict
-    print(aug_name, ' : ', subspace_dict['variance_percents'][:n_components])
+    ptu = PTU(
+        aug_samples,
+        n_neighbors=10,
+        geod_n_neighbors=15,
+        embedding_dim=10
+    )
+    embedding = ptu.fit()
+    original_dists = ptu.ptu_dists
+    embedding_dists = np.expand_dims(embedding, 0) - np.expand_dims(embedding, 1)
+    embedding_dists = np.sqrt(np.sum(np.square(embedding_dists), -1))
+
+    # remove diagonal elements
+    original_dists = original_dists[
+        ~np.eye(original_dists.shape[0],dtype=bool)
+    ].reshape(original_dists.shape[0],-1)
+    embedding_dists = embedding_dists[
+        ~np.eye(embedding_dists.shape[0],dtype=bool)
+    ].reshape(embedding_dists.shape[0],-1)
+
+    # Get ratio of embedding to geodesic distances
+    dist_ratio = original_dists / embedding_dists
+    zero_min = dist_ratio - np.min(dist_ratio)
+    span = np.max(dist_ratio) - np.min(dist_ratio)
+    dist_ratio = zero_min / span
+    dist_ratio = (dist_ratio * 255).astype(np.uint8)
+    img = Image.fromarray(dist_ratio, 'L')
+    img.save('dist_ratio.png')
+    img.show()
+    print(np.mean(dist_ratio))
+    print(np.var(dist_ratio))
+    print(np.median(dist_ratio))
 
 filename = 'augmentation_subspaces.npy'
 np.save(filename, augmentation_subspaces)

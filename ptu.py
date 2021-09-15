@@ -131,7 +131,9 @@ class PTU():
         """
         Parallel Transport Unfolding dimensionality reduction procedure
         """
+        print('Computing geodesic distances...')
         self.compute_geodesic_distances()
+        print('Performing MDS...')
         self.mds()
         return self.Embedding
 
@@ -154,8 +156,10 @@ class PTU():
         Parallel Transport Unfolding pairwise geodesic distance calculation
         """
         try:
+            print('\t - Computing proximity graph...')
             self.compute_proximity_graph()
             self.logger.info('Computing pairwise parallel transport distances')
+            print('\t - Performing dijkstra...')
             ptu_dists = ptu_dijkstra(
                 X=self.X,
                 csgraph=self.graph,
