@@ -9,17 +9,24 @@ import torchvision.transforms as T
 from PIL import Image
 from sklearn.decomposition import PCA
 
-training_data = torchvision.datasets.MNIST(
+training_data = torchvision.datasets.CIFAR10(
     root='./data',
     train=True,
     download=True,
     transform=None
 )
 
+# Cifar normalization
 normalize = T.Compose([
-    T.ToTensor(),
-    T.Normalize([0.1307], [0.3081])
+	T.ToTensor(),
+    T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
+
+# MNIST normalization
+# normalize = T.Compose([
+#     T.ToTensor(),
+#     T.Normalize([0.1307], [0.3081])
+# ])
 
 def get_rotation_kwargs(epoch):
     scalar = float(180) / epochs_per_aug
@@ -42,7 +49,7 @@ def get_gamma_kwargs(epoch):
     return {'gamma': epoch}
 
 def get_crop_kwargs(epoch):
-    return {'output_size': 28 - 2 * epoch}
+    return {'output_size': 32 - 2 * epoch}
 
 epochs_per_aug = 10
 num_samples = len(training_data)
@@ -67,7 +74,7 @@ augmentation_subspaces = {}
 # How linear is it?
 # Also would be interesting to look at the dimensionality of the low-dim manifold induced by aug
 for aug_i, (aug_name, aug_func) in enumerate(augmentation_list.items()):
-    aug_samples = np.zeros([num_samples * epochs_per_aug, 784])
+    aug_samples = np.zeros([num_samples * epochs_per_aug, 3072])
     pbar = tqdm(range(1, epochs_per_aug))
     for epoch in pbar:
         pbar.set_description('Epochs for %s' % aug_name)
