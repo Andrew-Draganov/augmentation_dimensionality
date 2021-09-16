@@ -10,24 +10,6 @@ def enumerate2(xs, start=0, step=1):
             break
         i += step
 
-def pca(aug_samples):
-    # Do PCA by hand since we want to save off the covariance matrices
-    cov_matrix = np.cov(aug_samples.T)
-    eig_vals, eig_vecs = np.linalg.eig(cov_matrix)
-    sort_indices = np.argsort(eig_vals)
-
-    # Sort by largest to smallest eigenvalue
-    eig_vals = eig_vals[sort_indices][::-1]
-    eig_vecs = eig_vecs[sort_indices][::-1]
-    variance_percents = np.abs(eig_vals) / np.sum(np.abs(eig_vals))
-    subspace_dict = {
-        'cov_matrix': cov_matrix,
-        'eig_vals': eig_vals,
-        'eig_vecs': eig_vecs,
-        'variance_percents': variance_percents
-    }
-    return subspace_dict
-
 # Augmentation kwarg generator
 def get_rotation_kwargs(epoch, epochs_per_aug):
     scalar = float(180) / epochs_per_aug
