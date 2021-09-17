@@ -51,11 +51,12 @@ kwargs_dict = {
 }
 augmentation_subspaces = {}
 
-# Sweep intensities or each augmentation, applying each intensity value to the entire dataset
+# Sweep intensities for each augmentation, applying each intensity value to the entire dataset
 # Then look at the subspace induced by the augmentation across its intensities
 for aug_i, (aug_name, aug_func) in enumerate(augmentation_list.items()):
-    aug_samples = np.zeros([num_samples * epochs_per_aug, 3072]) # CIFAR-10
     # aug_samples = np.zeros([num_samples * epochs_per_aug, 784]) # MNIST
+    aug_samples = np.zeros([num_samples * epochs_per_aug, 3072]) # CIFAR-10
+
     pbar = tqdm(range(epochs_per_aug))
     for epoch in pbar:
         pbar.set_description('Epochs for %s' % aug_name)

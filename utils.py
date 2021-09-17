@@ -1,6 +1,7 @@
 import numpy as np
 import random
 
+# Version of regular python enumerate with a step parameter
 def enumerate2(xs, start=0, step=1):
     i = start
     for count in range(len(xs)):
@@ -10,7 +11,10 @@ def enumerate2(xs, start=0, step=1):
             break
         i += step
 
-# Augmentation kwarg generator
+
+#########################################
+##### Augmentation kwarg generators #####
+#########################################
 def get_rotation_kwargs(epoch, epochs_per_aug):
     scalar = float(180) / epochs_per_aug
     min_rotation = (epoch - 1) * scalar
